@@ -371,7 +371,7 @@ class CephTestCase(unittest.TestCase, RunCephCmd):
                 if success_time_elapsed == success_hold_time:
                    log.debug("wait_until_true_and_hold: success for {0}s".format(success_hold_time))
                    return
-            else:
+           else:
                 if elapsed >= timeout:
                     if check_fn and check_fn() and retry_count < 5:
                         elapsed = 0
