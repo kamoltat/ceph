@@ -308,6 +308,12 @@ struct Owner : public ElectionOwner, RankProvider {
     return prefix_str.c_str();
   }
   int timestep_count() const { return parent->timesteps_run; }
+  std::string get_rank_name(int rank) const {
+    // Note that actual monitor names are not simply "mon." + rank, 
+    // but this is sufficient for our testing purposes since we don't
+    // test any logic that depends on the actual names of the monitors yet.
+    return "mon." + std::to_string(rank);
+  }
 };
 
 Election::Election(int c, ElectionLogic::election_strategy es, int pingi,
