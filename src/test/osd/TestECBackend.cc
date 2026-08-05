@@ -1494,7 +1494,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_local_zone_available) {
 
   pg_pool_t pool;
   pool.size = 12; // 2 zones with k+m shards each
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1595,7 +1595,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_fallback_to_remote) {
 
   pg_pool_t pool;
   pool.size = 12; // 2 zones
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1656,7 +1656,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_missing_shard_local) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1704,7 +1704,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_error_shards) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1749,7 +1749,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_three_zones) {
 
   pg_pool_t pool;
   pool.size = 18; // 3 zones
-  pool.opts.set(pool_opts_t::NUM_ZONES, 3);
+  pool.num_zones = 3;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1791,7 +1791,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_insufficient_shards) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1827,7 +1827,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_redundant_reads) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1869,7 +1869,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_recovery_mode) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
@@ -1912,7 +1912,7 @@ TEST(ECCommon, get_min_avail_to_read_shards_zones_mixed_availability) {
 
   pg_pool_t pool;
   pool.size = 12;
-  pool.opts.set(pool_opts_t::NUM_ZONES, 2);
+  pool.num_zones = 2;
 
   ECUtil::stripe_info_t s(k, m, swidth, &pool);
   ECListenerStub listenerStub;
