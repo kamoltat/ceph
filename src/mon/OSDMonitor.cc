@@ -8150,6 +8150,8 @@ int OSDMonitor::prepare_pool_size(const unsigned pool_type,
       *size = repl_size;
       if (!set_min_size)
         *min_size = g_conf().get_osd_pool_default_min_size(repl_size);
+      // Update replica to maintain invariant: size = num_zones * replica
+      replica = *size / num_zones;
     }
     break;
   case pg_pool_t::TYPE_ERASURE:
