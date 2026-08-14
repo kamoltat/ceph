@@ -10150,8 +10150,54 @@ int OSDMonitor::prepare_command_pool_stretch_set(const cmdmap_t& cmdmap,
     ss << "crush rule " << crush_rule << " type does not match pool";
     return -EINVAL;
   }
+  
+  // Extract num_zones from the CRUSH rule topology
+  // This is the actual number of zones (e.g., datacenters) the rule spans
+  // Note: this is different from peering_crush_bucket_count, which is the minimum needed for active PGs
+  set<int> rule_roots;
+  crush.find_takes_by_rule(crush_rule, &rule_roots);
+  
+  if (rule_roots.empty()) {
+    ss << "CRUSH rule " << crush_rule_str << " has no take operations";
+    return -EINVAL;
+  }
+  
+  set<int> rule_sites;
+  extract_sites_from_crush_rule(crush, rule_sites, rule_roots, bucket_barrier);
+  
+  int64_t num_zones = rule_sites.size();
+  if (num_zones == 0) {
+    ss << "CRUSH rule " << crush_rule_str << " does not span any " 
+       << bucket_barrier_str << " buckets";
+    return -EINVAL;
+  }
+  
+  // Validate that peering_crush_bucket_count doesn't exceed the actual number of zones
+  if (bucket_count > num_zones) {
+    ss << "peering_crush_bucket_count (" << bucket_count 
+       << ") cannot exceed the number of " << bucket_barrier_str 
+       << " zones (" << num_zones << ") spanned by crush rule " << crush_rule_str;
+    return -EINVAL;
+  }
+  
+  if (bucket_target > num_zones) {
+    ss << "peering_crush_bucket_target (" << bucket_target 
+       << ") cannot exceed the number of " << bucket_barrier_str 
+       << " zones (" << num_zones << ") spanned by crush rule " << crush_rule_str;
+    return -EINVAL;
+  }
+  
   int64_t replica = cmd_getval_or<int64_t>(cmdmap, "replica", 0);
   int64_t pool_size = cmd_getval_or<int64_t>(cmdmap, "size", 0);
+
+  // Reject simultaneous use of --size and --replica
+  bool replica_provided = cmdmap.count("replica") > 0;
+  bool size_provided = cmdmap.count("size") > 0;
+  if (replica_provided && size_provided) {
+    ss << "cannot specify both 'size' and 'replica' parameters; "
+       << "use 'replica' for stretch pools (size will be calculated as num_zones * replica)";
+    return -EINVAL;
+  }
 
   // Prevent setting replica when global stretch mode is enabled
   if (replica > 0 && mon.monmap->global_stretch_mode_enabled) {
@@ -10159,9 +10205,25 @@ int OSDMonitor::prepare_command_pool_stretch_set(const cmdmap_t& cmdmap,
     return -EINVAL;
   }
 
-  // For stretch pools, use replica if provided to calculate size
-  if (bucket_count > 0 && replica > 0) {
-    pool_size = bucket_count * replica;
+  // Calculate pool_size and replica based on what the user provided
+  if (replica_provided) {
+    // User provided --replica: calculate size = num_zones * replica
+    pool_size = num_zones * replica;
+  } else if (size_provided) {
+    // User provided --size: validate and calculate replica = size / num_zones
+    // Validate that size is evenly divisible by num_zones
+    if (pool_size % num_zones != 0) {
+      ss << "pool size " << pool_size << " is not evenly divisible by "
+         << "the number of " << bucket_barrier_str << " zones (" << num_zones 
+         << ") spanned by crush rule " << crush_rule_str 
+         << "; use --replica instead of --size for stretch pools";
+      return -EINVAL;
+    }
+    replica = pool_size / num_zones;
+  } else {
+    // Neither provided - error
+    ss << "must specify either --size or --replica";
+    return -EINVAL;
   }
 
   if (pool_size < 0) {
@@ -10200,11 +10262,11 @@ int OSDMonitor::prepare_command_pool_stretch_set(const cmdmap_t& cmdmap,
     int err = get_erasure_code(p.erasure_code_profile, &erasure_code, &ss);
     if (err == 0) {
       unsigned base_size = erasure_code->get_chunk_count();
-      int expected_size = bucket_count * base_size;
+      int expected_size = num_zones * base_size;
       int k = erasure_code->get_data_chunk_count();
       if (pool_size != expected_size) {
         ss << "For EC pool in stretch mode, size must be " << expected_size
-        << " (num_zones * (k+m) = num_zones * " << base_size << "), got " << pool_size;
+        << " (num_zones * (k+m) = " << num_zones << " * " << base_size << "), got " << pool_size;
         return -EINVAL;
       }
       if (static_cast<__u8>(pool_min_size) < k || static_cast<__u8>(pool_min_size) > base_size) {
@@ -10223,14 +10285,12 @@ int OSDMonitor::prepare_command_pool_stretch_set(const cmdmap_t& cmdmap,
   p.peering_crush_bucket_barrier = static_cast<uint32_t>(bucket_barrier);
   p.crush_rule = static_cast<__u8>(crush_rule);
   p.size = static_cast<__u8>(pool_size);
-  // Store num_zones (bucket_count represents the number of zones)
-  p.num_zones = static_cast<__u8>(bucket_count);
+  // Store num_zones (extracted from CRUSH rule topology)
+  p.num_zones = static_cast<__u8>(num_zones);
   if (p.is_replicated()) {
     p.min_size = static_cast<__u8>(pool_min_size);
-    // Store replica if provided
-    if (replica > 0) {
-      p.replica = static_cast<__u8>(replica);
-    }
+    // Store replica (calculated or provided)
+    p.replica = static_cast<__u8>(replica);
   }
   p.last_change = pending_inc.epoch;
   pending_inc.new_pools[pool] = p;
@@ -10290,7 +10350,32 @@ int OSDMonitor::prepare_command_pool_stretch_unset(const cmdmap_t& cmdmap,
     return -EINVAL;
   }
 
+  int64_t replica = cmd_getval_or<int64_t>(cmdmap, "replica", 0);
   int64_t pool_size = cmd_getval_or<int64_t>(cmdmap, "size", 0);
+
+  // Reject simultaneous use of --size and --replica
+  bool replica_provided = cmdmap.count("replica") > 0;
+  bool size_provided = cmdmap.count("size") > 0;
+  if (replica_provided && size_provided) {
+    ss << "cannot specify both 'size' and 'replica' parameters; "
+       << "use 'replica' for consistency (size will be set to replica for non-stretch pools)";
+    return -EINVAL;
+  }
+
+  // Calculate pool_size and replica based on what the user provided
+  // For non-stretch pools: num_zones = 1, so size = replica
+  if (replica_provided) {
+    // User provided --replica: size = replica (since num_zones = 1)
+    pool_size = replica;
+  } else if (size_provided) {
+    // User provided --size: replica = size (since num_zones = 1)
+    replica = pool_size;
+  } else {
+    // Neither provided - error
+    ss << "must specify either --size or --replica";
+    return -EINVAL;
+  }
+
   if (pool_size < 0) {
     ss << "pool size must be non-negative";
     return -EINVAL;
@@ -10309,9 +10394,9 @@ int OSDMonitor::prepare_command_pool_stretch_unset(const cmdmap_t& cmdmap,
   p.crush_rule = static_cast<__u8>(crush_rule);
   p.size = static_cast<__u8>(pool_size);
   p.min_size = static_cast<__u8>(pool_min_size);
-  // Clear replica and num_zones (no longer stretch)
-  p.replica = 0;
-  p.num_zones = 0;
+  // Clear num_zones and set replica (no longer stretch)
+  p.num_zones = 1;
+  p.replica = static_cast<__u8>(replica);
   p.last_change = pending_inc.epoch;
   pending_inc.new_pools[pool] = p;
   ss << "pool " << pool_name
@@ -16951,10 +17036,13 @@ void OSDMonitor::try_enable_stretch_mode(stringstream& ss, bool *okay,
       pool->peering_crush_bucket_target = bucket_count;
       pool->peering_crush_bucket_barrier = dividing_id;
       pool->peering_crush_mandatory_member = CRUSH_ITEM_NONE;
-      // Set size/min_size for replicated pools (only for global stretch mode)
+      pool->num_zones = bucket_count;
+      // Set size/num_zones/replica/min_size for global stretch mode replicated pools.
       if (set_global_stretch_mode && pool->is_replicated()) {
         uint64_t stretch_replica = g_conf().get_val<uint64_t>("mon_global_stretch_pool_replica");
+        pool->replica = stretch_replica;
         pool->size = bucket_count * stretch_replica;
+        pool->num_zones = bucket_count;
         pool->min_size = bucket_count;
       }
       // else for erasure-coded pools, size is determined by the erasure code profile
