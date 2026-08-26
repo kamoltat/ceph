@@ -9941,13 +9941,35 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
 
       if (old_num_zones > 1 && n == 1) {
         if (p.is_stretch_pool()) {
+          // Clear stretch-related pool parameters
           p.peering_crush_bucket_count = 0;
           p.peering_crush_bucket_target = 0;
           p.peering_crush_bucket_barrier = 0;
           p.peering_crush_mandatory_member = 0;
-          p.size = g_conf().get_val<uint64_t>("osd_pool_default_size");
-          p.min_size = g_conf().get_osd_pool_default_min_size(p.size);
-          p.replica = p.size;  // since num_zones = 1
+          // Handle size/min_size differently for replicated vs EC pools
+          if (p.type == pg_pool_t::TYPE_REPLICATED) {
+            p.size = g_conf().get_val<uint64_t>("osd_pool_default_size");
+            p.min_size = g_conf().get_osd_pool_default_min_size(p.size);
+            p.replica = p.size;  // since num_zones = 1
+          } else if (p.type == pg_pool_t::TYPE_ERASURE) {
+            // For EC pools, calculate size/min_size from erasure code profile
+            ErasureCodeInterfaceRef erasure_code;
+            stringstream tmp;
+            int err = get_erasure_code(p.erasure_code_profile, &erasure_code, &tmp);
+            if (err == 0) {
+              unsigned base_size = erasure_code->get_chunk_count();  // k + m
+              p.size = base_size;  // num_zones=1, so just k+m
+              p.min_size = erasure_code->get_data_chunk_count() +
+                           std::min<int>(1, erasure_code->get_coding_chunk_count() - 1);
+              // Do NOT set p.replica - EC pools don't use it
+            } else {
+              ss << "Failed to get erasure code profile for unstretching: " << tmp.str();
+              return err;
+            }
+          } else {
+            ss << "unknown pool type " << p.type;
+            return -EINVAL;
+          }
           ss << "pool unstretched (num_zones=1)";
           bool any_pool_stretched = false;
           for (const auto &_pool : osdmap.pools) {
