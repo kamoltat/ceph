@@ -392,10 +392,10 @@ bool OSDMap::at_least_one_zone_has_min_size(const pg_pool_t& pool,
   return false;
 }                                      
 
-unsigned OSDMap::stretch_ec_num_acting_below_min_size(const pg_pool_t& pool,
+unsigned OSDMap::stretch_num_acting_below_min_size(const pg_pool_t& pool,
                                         const vector<int>& acting) const
 {
-  if(!pool.is_erasure() || !pool.is_stretch_pool() || pool.peering_crush_bucket_count == 0) {
+  if (!pool.is_stretch_pool()) {
     return 0;
   }
 

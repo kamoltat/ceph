@@ -25,10 +25,9 @@
  *     Returns true if ANY zone in the CRUSH topology has >= pool.min_size
  *     acting OSDs.
  *
- *   stretch_ec_num_acting_below_min_size(pool, acting)
+ *   stretch_num_acting_below_min_size(pool, acting)
  *     Returns the total per-zone deficit: sum over all zones of
- *     max(0, min_size - zone_acting_count).  Returns 0 for non-stretch or
- *     non-erasure pools.
+ *     max(0, min_size - zone_acting_count).  Returns 0 for non-stretch
  *
  * Topology used by all tests
  * ─────────────────────────
@@ -179,14 +178,14 @@ TEST_F(StretchECMinSizeTest, ZoneHasMinSize_EmptyActingSet)
 }
 
 // ===========================================================================
-// stretch_ec_num_acting_below_min_size
+// stretch_num_acting_below_min_size
 // ===========================================================================
 
 // All zones fully populated
 TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_AllZonesHealthy)
 {
   vector<int> acting = {0, 1, 2, 3, 4, 5};
-  EXPECT_EQ(0u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(0u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // One zone exactly at min_size
@@ -194,7 +193,7 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_OneZoneAtMinSize)
 {
   vector<int> acting = {0, 1, CRUSH_ITEM_NONE,   // dc0: 2 = min_size
                         3, 4, 5};                 // dc1: 3
-  EXPECT_EQ(0u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(0u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // dc0 has 1 OSD (< min_size=2) - deficit 1; dc1 OK
@@ -202,7 +201,7 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_OneZoneBelowMinSize)
 {
   vector<int> acting = {0, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE,
                         3, 4, 5};
-  EXPECT_EQ(1u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(1u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // Both zones have 1 OSD each - deficit 1+1 = 2
@@ -210,7 +209,7 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_BothZonesBelowMinSize)
 {
   vector<int> acting = {0, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE,
                         3, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE};
-  EXPECT_EQ(2u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(2u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // dc1 completely empty - deficit = min_size = 2
@@ -218,14 +217,14 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_OneZoneCompletelyEmpty)
 {
   vector<int> acting = {0, 1, 2,
                         CRUSH_ITEM_NONE, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE};
-  EXPECT_EQ(2u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(2u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // Both zones empty - deficit = 2 * min_size = 4
 TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_BothZonesEmpty)
 {
   vector<int> acting(6, CRUSH_ITEM_NONE);
-  EXPECT_EQ(4u, osdmap->stretch_ec_num_acting_below_min_size(*pool, acting));
+  EXPECT_EQ(4u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
 }
 
 // Non-stretch pool - always 0
@@ -235,7 +234,7 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_NonStretchPool)
   non_stretch.peering_crush_bucket_count = 0;
   vector<int> acting = {0, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE,
                         3, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE};
-  EXPECT_EQ(0u, osdmap->stretch_ec_num_acting_below_min_size(non_stretch, acting));
+  EXPECT_EQ(0u, osdmap->stretch_num_acting_below_min_size(non_stretch, acting));
 }
 
 // Non-erasure pool - always 0
@@ -245,5 +244,5 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_ReplicatedPool)
   rep.type = pg_pool_t::TYPE_REPLICATED;
   vector<int> acting = {0, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE,
                         3, CRUSH_ITEM_NONE, CRUSH_ITEM_NONE};
-  EXPECT_EQ(0u, osdmap->stretch_ec_num_acting_below_min_size(rep, acting));
+  EXPECT_EQ(0u, osdmap->stretch_num_acting_below_min_size(rep, acting));
 }

@@ -1226,12 +1226,12 @@ unsigned PeeringState::get_recovery_priority()
     // XXX: This priority boost isn't so much about inactive, but about data-at-risk
     if (is_degraded()) {
       unsigned num_avail_no_missing_below_min_size = 0;
-      if (pool.info.is_erasure() && pool.info.is_stretch_pool()) {
+      if (pool.info.is_stretch_pool()) {
         vector<int> avail_osds;
         for (auto& s : info.stats.avail_no_missing) {
           avail_osds.push_back(s.osd);
         }
-        num_avail_no_missing_below_min_size = get_osdmap()->stretch_ec_num_acting_below_min_size(pool.info, avail_osds);
+        num_avail_no_missing_below_min_size = get_osdmap()->stretch_num_acting_below_min_size(pool.info, avail_osds);
       }  
       if (num_avail_no_missing_below_min_size) {
         base = OSD_RECOVERY_INACTIVE_PRIORITY_BASE;
@@ -1262,8 +1262,8 @@ unsigned PeeringState::get_backfill_priority()
     ret = OSD_BACKFILL_PRIORITY_FORCED;
   } else {
     unsigned num_acting_below_min_size = 0;
-    if (pool.info.is_erasure() && pool.info.is_stretch_pool()) {
-      num_acting_below_min_size = get_osdmap()->stretch_ec_num_acting_below_min_size(pool.info, acting);
+    if (pool.info.is_stretch_pool()) {
+      num_acting_below_min_size = get_osdmap()->stretch_num_acting_below_min_size(pool.info, acting);
     } 
     if (num_acting_below_min_size) {
       base = OSD_BACKFILL_INACTIVE_PRIORITY_BASE;
@@ -2711,7 +2711,7 @@ void PeeringState::choose_async_recovery_ec(
     ceph_assert(want_acting_size > 0);
     if ((want_acting_size > pool.info.min_size) &&
         pool.info.stretch_set_can_peer(candidate_want, *osdmap, NULL) &&
-        (osdmap->stretch_ec_num_acting_below_min_size(pool.info, candidate_want) == 0) &&
+        (osdmap->stretch_num_acting_below_min_size(pool.info, candidate_want) == 0) &&
 	      recoverable(candidate_want)) {
       want->swap(candidate_want);
       async_recovery->insert(cur_shard);
@@ -2765,7 +2765,10 @@ void PeeringState::choose_async_recovery_replicated(
   // take out as many osds as we can for async recovery, in order of cost
   for (auto rit = candidates_by_cost.rbegin();
        rit != candidates_by_cost.rend(); ++rit) {
-    if (want->size() <= pool.info.min_size) {
+    bool below_min_size = pool.info.is_stretch_pool()
+      ? osdmap->stretch_num_acting_below_min_size(pool.info, *want)
+      : want->size() <= pool.info.min_size;
+    if (below_min_size) {
       break;
     }
     pg_shard_t cur_shard = rit->second;

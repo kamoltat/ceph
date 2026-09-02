@@ -1017,7 +1017,7 @@ public:
   bool containing_subtree_is_down(CephContext *cct, int osd, int subtree_type, std::set<int> *down_cache) const;
 
   bool at_least_one_zone_has_min_size(const pg_pool_t& pool, const std::vector<int>& acting) const ;
-  unsigned stretch_ec_num_acting_below_min_size(const pg_pool_t& pool, const std::vector<int>& acting) const;
+  unsigned stretch_num_acting_below_min_size(const pg_pool_t& pool, const std::vector<int>& acting) const;
 
   bool subtree_type_is_down(CephContext *cct, int id, int subtree_type, std::set<int> *down_in_osds, std::set<int> *up_in_osds,
                             std::set<int> *subtree_up, std::unordered_map<int, std::set<int> > *subtree_type_down) const;

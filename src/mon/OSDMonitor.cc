@@ -1539,14 +1539,12 @@ void OSDMonitor::prime_pg_temp(
   if (acting.empty())
     return;  // if previously empty now we can be no worse off
   const pg_pool_t *pool = next.get_pg_pool(pgid.pool());
-  if (pool) {
-    if (pool->is_erasure() && 
-      pool->is_stretch_pool() && 
-      pool->peering_crush_bucket_count > 1 && 
-      next.stretch_ec_num_acting_below_min_size(*pool, acting) > 0)
-        return;  // can be no worse off than before
-    if (acting.size() < pool->min_size)
-      return;  // can be no worse off than before
+  bool below_min_size = pool &&
+    ((pool->is_stretch_pool() &&
+      next.stretch_num_acting_below_min_size(*pool, acting)) ||
+     acting.size() < pool->min_size);
+  if (below_min_size) {
+    return;  // can be no worse off than before
   }
 
   if (next_up == next_acting) {
@@ -17353,9 +17351,6 @@ void OSDMonitor::trigger_degraded_stretch_mode(const set<int>& dead_buckets,
       pg_pool_t& newp = *pending_inc.get_new_pool(pgi.first, &pgi.second);
       newp.peering_crush_bucket_count = new_site_count;
       newp.peering_crush_mandatory_member = remaining_site;
-      if(newp.is_replicated()) {
-        newp.min_size = pgi.second.min_size / osdmap.stretch_bucket_count;
-      }
       newp.set_last_force_op_resend(pending_inc.epoch);
     }
   }
