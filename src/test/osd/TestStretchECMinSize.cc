@@ -27,7 +27,8 @@
  *
  *   stretch_num_acting_below_min_size(pool, acting)
  *     Returns the total per-zone deficit: sum over all zones of
- *     max(0, min_size - zone_acting_count).  Returns 0 for non-stretch
+ *     max(0, min_size - zone_acting_count), except for 3AZ pools where
+ *     min_size applies to the whole cluster.  Returns 0 for non-stretch
  *
  * Topology used by all tests
  * ─────────────────────────
@@ -225,6 +226,19 @@ TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_BothZonesEmpty)
 {
   vector<int> acting(6, CRUSH_ITEM_NONE);
   EXPECT_EQ(4u, osdmap->stretch_num_acting_below_min_size(*pool, acting));
+}
+
+TEST_F(StretchECMinSizeTest, NumActingBelowMinSize_ThreeAZCluster)
+{
+  pg_pool_t three_az_pool = *pool;
+  three_az_pool.num_zones = 3;
+  three_az_pool.peering_crush_bucket_count = 2;
+
+  vector<int> acting = {0, 1, 2, 3, 4, 5};
+  EXPECT_EQ(0u, osdmap->stretch_num_acting_below_min_size(three_az_pool, acting));
+
+  acting = {0, 1, 2, 3, 4, CRUSH_ITEM_NONE};
+  EXPECT_EQ(1u, osdmap->stretch_num_acting_below_min_size(three_az_pool, acting));
 }
 
 // Non-stretch pool - always 0

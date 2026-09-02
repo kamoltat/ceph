@@ -2637,13 +2637,22 @@ bool PeeringState::recoverable(const vector<int> &want) const
           pool.info.is_erasure() ? shard_id_t(i) : shard_id_t::NO_SHARD));
     }
   }
-
-  if (num_want_acting < pool.info.min_size) {
-    if (!cct->_conf.get_val<bool>("osd_allow_recovery_below_min_size")) {
-      psdout(10) << "failed, recovery below min size not enabled" << dendl;
-      return false;
+  if (!pool.info.is_stretch_pool()) {
+    if (num_want_acting < pool.info.min_size) {
+      if (!cct->_conf.get_val<bool>("osd_allow_recovery_below_min_size")) {
+        psdout(10) << "failed, recovery below min size not enabled" << dendl;
+        return false;
+      }
+    }
+  } else {
+    if (get_osdmap()->stretch_num_acting_below_min_size(pool.info, want)) {
+      if (!cct->_conf.get_val<bool>("osd_allow_recovery_below_min_size")) {
+        psdout(10) << "failed, recovery below min size not enabled" << dendl;
+        return false;
+      }
     }
   }
+
   if (missing_loc.get_recoverable_predicate()(have)) {
     return true;
   } else {
@@ -2709,10 +2718,12 @@ void PeeringState::choose_async_recovery_ec(
     vector<int> candidate_want(*want);
     candidate_want[cur_shard.shard.id] = CRUSH_ITEM_NONE;
     ceph_assert(want_acting_size > 0);
-    if ((want_acting_size > pool.info.min_size) &&
-        pool.info.stretch_set_can_peer(candidate_want, *osdmap, NULL) &&
-        (osdmap->stretch_num_acting_below_min_size(pool.info, candidate_want) == 0) &&
-	      recoverable(candidate_want)) {
+    bool can_remove = recoverable(candidate_want);
+    if (pool.info.is_stretch_pool()) {
+      can_remove = can_remove &&
+        pool.info.stretch_set_can_peer(candidate_want, *osdmap, NULL);
+    }
+    if (can_remove) {
       want->swap(candidate_want);
       async_recovery->insert(cur_shard);
       --want_acting_size;
