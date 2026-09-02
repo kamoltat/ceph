@@ -10054,15 +10054,9 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
             if (err) return err;
 
             // Validate FastEC support (required for multi-zone EC pools)
-            stringstream ec_opt_ss;
-            int ec_opt_result = enable_pool_ec_optimizations(p, &ec_opt_ss, true);
-            if (ec_opt_result != 0) {
-              ss << "Multi-zone erasure coded pools require FastEC support. "
-                 << "The erasure code profile '" << p.erasure_code_profile << "' "
-                 << "does not support FastEC: " << ec_opt_ss.str()
-                 << " Please use a FastEC-compatible profile (e.g., plugin=jerasure technique=reed_sol_van, "
-                 << "or plugin=isa).";
-              return ec_opt_result;
+            if (auto r = enable_pool_ec_optimizations(p, true, false); !r) {
+              ss << r.error().message;
+              return r.error().error;
             }
           } else {
             ss << "unknown pool type " << p.type;
@@ -15231,10 +15225,16 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     root = cmd_getval_or<string>(cmdmap, "root", "default");
     int replica = cmd_getval_or<int64_t>(cmdmap, "replica", 0);
-    int num_replica_per_zone = cmd_getval_or<int64_t>(cmdmap, "num_replica_per_zone", 2);
+    int num_replica_per_zone = cmd_getval_or<int64_t>(
+      cmdmap, "replica",
+      g_conf().get_val<uint64_t>("osd_pool_stretch_default_replica"));
     zone_failure_domain = cmd_getval_or<string>(cmdmap, "zone_failure_domain", "datacenter");
     osd_failure_domain = cmd_getval_or<string>(cmdmap, "osd_failure_domain", "host");
     cmd_getval(cmdmap, "class", device_class);
+
+    if (num_zones > 1 && replica == 0) {
+      replica = num_replica_per_zone;
+    }
 
     // Prevent specifying both size and replica
     if (cmdmap.count("size") && cmdmap.count("replica")) {
