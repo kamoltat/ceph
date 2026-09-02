@@ -8142,7 +8142,9 @@ int OSDMonitor::prepare_pool_size(const unsigned pool_type,
     if (replica > 0) {
       *size = num_zones * replica;
       if (!set_min_size)
-        *min_size = (num_zones > 1) ? 1 : g_conf().get_osd_pool_default_min_size(*size);
+        *min_size = (num_zones > 1)
+            ? g_conf().get_osd_pool_default_min_size(replica)
+            : g_conf().get_osd_pool_default_min_size(*size);
     } else { // Use size parameter (legacy)
       if (repl_size == 0) {
         repl_size = g_conf().get_val<uint64_t>("osd_pool_default_size");
