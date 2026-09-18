@@ -35,6 +35,7 @@ overrides:
         osd_pool_default_min_size: 3
         osd_pool_default_pg_autoscale_mode: off
         debug mon: 30
+        debug ms: 20
 tasks:
 - install:
 - ceph:
