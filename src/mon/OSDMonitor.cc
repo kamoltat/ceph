@@ -9114,6 +9114,44 @@ void OSDMonitor::maybe_enable_pool_split_ops(pg_pool_t &p) {
   }
 }
 
+void OSDMonitor::maybe_remove_unused_crush_rule(int64_t skip_pool,
+                                                int old_rule_id)
+{
+  if (old_rule_id < 0) {
+    return;
+  }
+  // Never delete the cluster's default replicated rule
+  if (old_rule_id == osdmap.crush->get_osd_pool_default_crush_replicated_rule(cct)) {
+    return;
+  }
+  // Check whether any pool other than current still references old_rule_id.
+  for (const auto& [pid, committed_pool] : osdmap.pools) {
+    if (pid == skip_pool) {
+      continue;
+    }
+    const auto it = pending_inc.new_pools.find(pid);
+    const auto& pp = (it != pending_inc.new_pools.end()) ? it->second : committed_pool;
+    if (pp.crush_rule == old_rule_id) {
+      return;
+    }
+  }
+
+  // The rule is no longer referenced, remove it from the pending crush.
+  CrushWrapper newcrush = _get_pending_crush();
+  if (!newcrush.rule_exists(old_rule_id)) {
+    return;
+  }
+  dout(10) << __func__ << " removing unused crush rule " << old_rule_id << dendl;
+  int r = newcrush.remove_rule(old_rule_id);
+  if (r < 0) {
+    dout(5) << __func__ << " failed to remove crush rule " << old_rule_id
+            << ": " << cpp_strerror(r) << dendl;
+    return;
+  }
+  pending_inc.crush.clear();
+  newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
+}
+
 int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
                                          stringstream& ss)
 {
@@ -9968,6 +10006,8 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
       }
       // Capture old num_zones for comparison
       int64_t old_num_zones = p.get_num_zones();
+      // Capture old crush rule for potential removal
+      const int old_crush_rule = p.crush_rule;
 
       if (old_num_zones > 1 && n == 1) {
         if (p.is_stretch_pool()) {
@@ -10237,6 +10277,7 @@ int OSDMonitor::prepare_command_pool_set(const cmdmap_t& cmdmap,
           }
         }
       }
+      maybe_remove_unused_crush_rule(pool, old_crush_rule);
     } else if (var == "replica") {
       if (interr.length()) {
         ss << "error parsing int value '" << val << "': " << interr;
@@ -16837,22 +16878,7 @@ int OSDMonitor::_prepare_remove_pool(
 
   // remove any crush rules for this pool
   const pg_pool_t *pi = osdmap.get_pg_pool(pool);
-  if (pi->is_erasure() && newcrush.rule_exists(pi->get_crush_rule())) {
-    int ruleno = pi->get_crush_rule();
-    ceph_assert(ruleno >= 0);
-
-    auto rule_in_use = false;
-    for (const auto &_pool : osdmap.pools) {
-      if (_pool.second.get_crush_rule() == ruleno && pool != _pool.first)
-        rule_in_use = true;
-    }
-    if (!rule_in_use) {
-      dout(10) << __func__ << " removing crush rule for pool " << pool << dendl;
-      newcrush.remove_rule(ruleno);
-      pending_inc.crush.clear();
-      newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
-    }
-  }
+  maybe_remove_unused_crush_rule(pool, pi->get_crush_rule());
   // If not in global stretch mode but osdmap has stretch mode enabled,
   // check if this is the last pool with stretch mode enabled.
   // If so, clean up stretch mode state from both osdmap and monmap.

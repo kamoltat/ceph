@@ -800,6 +800,7 @@ public:
    enable_pool_ec_optimizations(pg_pool_t &pool, bool enable,
                                 bool yes_i_really_mean_it);
   void maybe_enable_pool_split_ops(pg_pool_t &p);
+  void maybe_remove_unused_crush_rule(int64_t skip_pool, int old_rule_id);
   int prepare_command_pool_set(const cmdmap_t& cmdmap,
                                std::stringstream& ss);
 
